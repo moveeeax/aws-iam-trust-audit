@@ -1,0 +1,8 @@
+# Built binary, anchored to the repo root so it never swallows cmd/ sources.
+/aws-iam-trust-audit
+/dist/
+/coverage.out
+
+# Keep every fixture tracked.
+!testdata/**
+!**/testdata/**

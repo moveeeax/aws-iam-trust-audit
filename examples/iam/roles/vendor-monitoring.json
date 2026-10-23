@@ -1,0 +1,15 @@
+{
+  "RoleName": "vendor-monitoring",
+  "Arn": "arn:aws:iam::111122223333:role/vendor-monitoring",
+  "AssumeRolePolicyDocument": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "VendorReadOnly",
+        "Effect": "Allow",
+        "Principal": { "AWS": "arn:aws:iam::999988887777:root" },
+        "Action": "sts:AssumeRole"
+      }
+    ]
+  }
+}

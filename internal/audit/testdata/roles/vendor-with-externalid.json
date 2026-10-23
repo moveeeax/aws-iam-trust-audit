@@ -1,0 +1,19 @@
+{
+  "Role": {
+    "RoleName": "VendorMonitoringTight",
+    "Arn": "arn:aws:iam::111122223333:role/VendorMonitoringTight",
+    "AssumeRolePolicyDocument": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": { "AWS": "arn:aws:iam::999988887777:role/VendorScanner" },
+          "Action": "sts:AssumeRole",
+          "Condition": {
+            "StringEquals": { "sts:ExternalId": "b0f2b0b2-7c7e-4f3a-9a5e-2c1a1d9f0e11" }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "RoleName": "BreakGlass",
+  "Arn": "arn:aws:iam::111122223333:role/BreakGlass",
+  "AssumeRolePolicyDocument": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "AccountRoot",
+        "Effect": "Allow",
+        "Principal": { "AWS": "arn:aws:iam::111122223333:root" },
+        "Action": "sts:AssumeRole"
+      },
+      {
+        "Sid": "HumanOperator",
+        "Effect": "Allow",
+        "Principal": { "AWS": "arn:aws:iam::111122223333:user/oncall" },
+        "Action": ["sts:AssumeRole", "sts:TagSession"]
+      }
+    ]
+  }
+}

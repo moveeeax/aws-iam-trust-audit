@@ -1,0 +1,16 @@
+{
+  "RoleName": "app-instance-role",
+  "Arn": "arn:aws:iam::111122223333:role/app-instance-role",
+  "AssumeRolePolicyDocument": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "AllowEC2",
+        "Effect": "Allow",
+        "Principal": { "Service": "ec2.amazonaws.com" },
+        "Action": "sts:AssumeRole",
+        "Condition": { "StringEquals": { "aws:SourceAccount": "111122223333" } }
+      }
+    ]
+  }
+}

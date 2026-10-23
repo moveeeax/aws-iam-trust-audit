@@ -1,0 +1,80 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.22", "1.23", "stable"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./... -count=1
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build
+        run: go build -o aws-iam-trust-audit ./cmd/aws-iam-trust-audit
+
+      - name: Findings in the examples exit 1
+        run: |
+          set +e
+          ./aws-iam-trust-audit --dir examples/iam/roles --trusted-accounts 111122223333
+          code=$?
+          set -e
+          test "$code" = "1" || { echo "expected exit 1, got $code"; exit 1; }
+
+      - name: A clean role exits 0
+        run: ./aws-iam-trust-audit --dir examples/iam/roles/ec2-app.json
+
+      - name: Markdown and JSON render
+        run: |
+          ./aws-iam-trust-audit --dir examples/iam/roles --format markdown --fail-on never
+          ./aws-iam-trust-audit --dir examples/iam/roles --format json --fail-on never | python3 -m json.tool > /dev/null
+
+      - name: A broken policy exits 2
+        run: |
+          set +e
+          ./aws-iam-trust-audit --dir internal/audit/testdata/broken
+          code=$?
+          set -e
+          test "$code" = "2" || { echo "expected exit 2, got $code"; exit 1; }
+
+  action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the composite action against the examples
+        id: audit
+        continue-on-error: true
+        uses: ./
+        with:
+          dir: examples/iam/roles
+          format: markdown
+          trusted-accounts: "111122223333"
+      - name: The action reported findings
+        run: |
+          test "${{ steps.audit.outputs.exit-code }}" = "1" \
+            || { echo "action exit-code = ${{ steps.audit.outputs.exit-code }}, want 1"; exit 1; }

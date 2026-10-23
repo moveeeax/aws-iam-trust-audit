@@ -1,0 +1,32 @@
+{
+  "Roles": [
+    {
+      "RoleName": "AppRole",
+      "Arn": "arn:aws:iam::111122223333:role/AppRole",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": { "Service": "lambda.amazonaws.com" },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    },
+    {
+      "RoleName": "PartnerRole",
+      "Arn": "arn:aws:iam::111122223333:role/PartnerRole",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": { "AWS": "444455556666" },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    }
+  ]
+}

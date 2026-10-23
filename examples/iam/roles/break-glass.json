@@ -1,0 +1,15 @@
+{
+  "RoleName": "break-glass",
+  "Arn": "arn:aws:iam::111122223333:role/break-glass",
+  "AssumeRolePolicyDocument": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "Oncall",
+        "Effect": "Allow",
+        "Principal": { "AWS": "arn:aws:iam::111122223333:user/oncall" },
+        "Action": "sts:AssumeRole"
+      }
+    ]
+  }
+}

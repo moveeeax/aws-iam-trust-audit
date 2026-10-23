@@ -1,0 +1,21 @@
+{
+  "RoleName": "github-actions-deploy",
+  "Arn": "arn:aws:iam::111122223333:role/github-actions-deploy",
+  "AssumeRolePolicyDocument": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "GithubOIDC",
+        "Effect": "Allow",
+        "Principal": {
+          "Federated": "arn:aws:iam::111122223333:oidc-provider/token.actions.githubusercontent.com"
+        },
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+          "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
+          "StringLike": { "token.actions.githubusercontent.com:sub": "repo:acme-corp/*:*" }
+        }
+      }
+    ]
+  }
+}

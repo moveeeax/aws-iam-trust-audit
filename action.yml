@@ -1,0 +1,102 @@
+name: aws-iam-trust-audit
+description: Audit IAM role trust policies for wildcard principals, cross-account AssumeRole without ExternalId and over-broad GitHub OIDC subjects.
+branding:
+  icon: shield
+  color: orange
+
+inputs:
+  dir:
+    description: Directory (or file) of trust policy JSON to audit.
+    required: false
+    default: ./iam/roles
+  format:
+    description: Output format — table, json or markdown.
+    required: false
+    default: table
+  trusted-accounts:
+    description: Comma-separated account ids that are expected to appear.
+    required: false
+    default: ""
+  min-severity:
+    description: Report findings at this severity and above — warning or error.
+    required: false
+    default: warning
+  fail-on:
+    description: Fail the step when a finding reaches this severity — warning, error or never.
+    required: false
+    default: error
+  ignore:
+    description: Comma-separated rule names to suppress.
+    required: false
+    default: ""
+  account:
+    description: Account that owns these roles; defaults to the account in each role ARN.
+    required: false
+    default: ""
+  go-version:
+    description: Go toolchain used to build the auditor.
+    required: false
+    default: "1.22"
+
+outputs:
+  exit-code:
+    description: 0 clean, 1 findings at or above fail-on, 2 a parse error.
+    value: ${{ steps.audit.outputs.exit-code }}
+  report:
+    description: The rendered report.
+    value: ${{ steps.audit.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+
+    - name: Build aws-iam-trust-audit
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: go build -o "$RUNNER_TEMP/aws-iam-trust-audit" ./cmd/aws-iam-trust-audit
+
+    - name: Audit trust policies
+      id: audit
+      shell: bash
+      run: |
+        args=(--dir "${{ inputs.dir }}" --format "${{ inputs.format }}"
+              --min-severity "${{ inputs.min-severity }}" --fail-on "${{ inputs.fail-on }}")
+        [[ -n "${{ inputs.trusted-accounts }}" ]] && args+=(--trusted-accounts "${{ inputs.trusted-accounts }}")
+        [[ -n "${{ inputs.ignore }}" ]] && args+=(--ignore "${{ inputs.ignore }}")
+        [[ -n "${{ inputs.account }}" ]] && args+=(--account "${{ inputs.account }}")
+
+        # Findings exit non-zero on purpose. GitHub runs composite `run:` steps
+        # under `bash -e`, so the exit code has to be caught before it aborts
+        # the step and the report is lost.
+        set +e
+        "$RUNNER_TEMP/aws-iam-trust-audit" "${args[@]}" | tee "$RUNNER_TEMP/trust-audit.out"
+        code=${PIPESTATUS[0]}
+        set -e
+
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        {
+          echo "report<<AUDIT_EOF"
+          cat "$RUNNER_TEMP/trust-audit.out"
+          echo "AUDIT_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### aws-iam-trust-audit"
+          echo
+          echo '```'
+          cat "$RUNNER_TEMP/trust-audit.out"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [[ "$code" == "2" ]]; then
+          echo "::error::aws-iam-trust-audit could not parse the trust policies in ${{ inputs.dir }}"
+          exit 2
+        fi
+        if [[ "$code" != "0" ]]; then
+          echo "::error::aws-iam-trust-audit found trust policy issues at or above '${{ inputs.fail-on }}'"
+          exit 1
+        fi

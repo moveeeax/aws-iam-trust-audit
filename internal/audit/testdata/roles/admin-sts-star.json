@@ -1,0 +1,5 @@
+{
+  "RoleName": "LegacyAdmin",
+  "Arn": "arn:aws:iam::111122223333:role/LegacyAdmin",
+  "AssumeRolePolicyDocument": "%7B%22Version%22%3A%222012-10-17%22%2C%22Statement%22%3A%5B%7B%22Effect%22%3A%22Allow%22%2C%22Principal%22%3A%7B%22AWS%22%3A%22arn%3Aaws%3Aiam%3A%3A111122223333%3Auser%2Fadmin%22%7D%2C%22Action%22%3A%22sts%3A*%22%7D%5D%7D"
+}
