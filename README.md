@@ -1,7 +1,7 @@
 # aws-iam-trust-audit
 
 [![ci](https://github.com/moveeeax/aws-iam-trust-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/moveeeax/aws-iam-trust-audit/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/go-1.22%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Least-privilege tooling reads permission policies: what a role can do once you are it. The

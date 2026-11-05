@@ -15,7 +15,7 @@ import (
 )
 
 // version is the build stamp; -ldflags can override it.
-var version = "0.1.0"
+var version = "0.2.0"
 
 // Exit codes: 0 clean, 1 findings at or above --fail-on, 2 a parse or usage error.
 const (
