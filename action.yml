@@ -36,7 +36,7 @@ inputs:
   go-version:
     description: Go toolchain used to build the auditor.
     required: false
-    default: "1.22"
+    default: "1.27"
 
 outputs:
   exit-code:
@@ -49,7 +49,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@v7
       with:
         go-version: ${{ inputs.go-version }}
         cache: false
