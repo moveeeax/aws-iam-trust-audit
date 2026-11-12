@@ -2,9 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/moveeeax/aws-iam-trust-audit/internal/iampolicy"
 )
 
 var fixtures = filepath.Join("..", "..", "internal", "audit", "testdata", "roles")
@@ -140,5 +144,69 @@ func TestTrustedAccountsFlagAcceptsCommaList(t *testing.T) {
 		"--trusted-accounts", "999988887777", "--format", "json")
 	if strings.Contains(out, "untrusted-account") {
 		t.Fatalf("listed account must not be flagged:\n%s", out)
+	}
+}
+
+// fakeLive swaps the IAM loader for one that returns the given fixture and
+// records what it was asked for.
+func fakeLive(t *testing.T, fixture string, err error) *[2]string {
+	t.Helper()
+	var got [2]string
+	orig := loadLive
+	t.Cleanup(func() { loadLive = orig })
+	loadLive = func(_ context.Context, profile, rolePath string) ([]iampolicy.Role, error) {
+		got = [2]string{profile, rolePath}
+		if err != nil {
+			return nil, err
+		}
+		return iampolicy.LoadFile(filepath.Join(fixtures, fixture))
+	}
+	return &got
+}
+
+func TestFromAWSAuditsLiveRoles(t *testing.T) {
+	got := fakeLive(t, "wildcard.json", nil)
+	code, out, errOut := call(t, "--from-aws", "--profile", "audit", "--role-path", "/ci/")
+	if code != exitFindings {
+		t.Fatalf("exit = %d, want 1\n%s%s", code, out, errOut)
+	}
+	if *got != [2]string{"audit", "/ci/"} {
+		t.Fatalf("loader got profile/path %v", *got)
+	}
+	if !strings.Contains(out, "wildcard-principal") {
+		t.Fatalf("live roles were not audited:\n%s", out)
+	}
+}
+
+func TestFromAWSErrorExitsTwo(t *testing.T) {
+	fakeLive(t, "", errors.New("iam:ListRoles: AccessDenied"))
+	code, _, errOut := call(t, "--from-aws")
+	if code != exitError || !strings.Contains(errOut, "AccessDenied") {
+		t.Fatalf("exit = %d, stderr = %q", code, errOut)
+	}
+}
+
+func TestLiveFlagUsageErrors(t *testing.T) {
+	fakeLive(t, "ec2-app.json", nil)
+	for _, args := range [][]string{
+		{"--from-aws", "--dir", fixtures},
+		{"--role-path", "/ci/"},
+		{"--profile", "audit"},
+		{"--from-aws", "--role-path", "ci"},
+		{"--from-aws", "--format", "yaml"},
+	} {
+		if code, _, errOut := call(t, args...); code != exitError {
+			t.Fatalf("%v: exit = %d, want 2 (stderr %q)", args, code, errOut)
+		}
+	}
+}
+
+func TestSARIFFormat(t *testing.T) {
+	code, out, _ := call(t, "--dir", filepath.Join(fixtures, "oidc-no-sub.json"), "--format", "sarif")
+	if code != exitFindings {
+		t.Fatalf("exit = %d, want 1", code)
+	}
+	if !strings.Contains(out, `"version": "2.1.0"`) || !strings.Contains(out, `"version": "`+version+`"`) {
+		t.Fatalf("sarif output:\n%s", out)
 	}
 }

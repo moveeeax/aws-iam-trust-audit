@@ -94,3 +94,77 @@ func TestUnknownFormatIsAnError(t *testing.T) {
 		t.Fatal("unknown format should be rejected")
 	}
 }
+
+func TestSARIFCarriesRulesResultsAndLocations(t *testing.T) {
+	Version = "9.9.9"
+	t.Cleanup(func() { Version = "dev" })
+	out := render(t, fixture(t, "oidc-wildcard.json"), "sarif")
+	var log struct {
+		Version string `json:"version"`
+		Runs    []struct {
+			Tool struct {
+				Driver struct {
+					Name    string `json:"name"`
+					Version string `json:"version"`
+					Rules   []struct {
+						ID string `json:"id"`
+					} `json:"rules"`
+				} `json:"driver"`
+			} `json:"tool"`
+			Results []struct {
+				RuleID    string `json:"ruleId"`
+				RuleIndex int    `json:"ruleIndex"`
+				Level     string `json:"level"`
+				Locations []struct {
+					PhysicalLocation struct {
+						ArtifactLocation struct {
+							URI string `json:"uri"`
+						} `json:"artifactLocation"`
+					} `json:"physicalLocation"`
+				} `json:"locations"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(out), &log); err != nil {
+		t.Fatalf("sarif does not parse: %v\n%s", err, out)
+	}
+	if log.Version != "2.1.0" || len(log.Runs) != 1 {
+		t.Fatalf("version = %q, runs = %d", log.Version, len(log.Runs))
+	}
+	run := log.Runs[0]
+	if run.Tool.Driver.Name != "aws-iam-trust-audit" || run.Tool.Driver.Version != "9.9.9" {
+		t.Fatalf("driver = %+v", run.Tool.Driver)
+	}
+	if len(run.Tool.Driver.Rules) != len(audit.Rules) {
+		t.Fatalf("rules = %d, want %d", len(run.Tool.Driver.Rules), len(audit.Rules))
+	}
+	if len(run.Results) != 1 {
+		t.Fatalf("results = %d, want 1", len(run.Results))
+	}
+	r := run.Results[0]
+	if r.RuleID != "oidc-wildcard-sub" || r.Level != "error" {
+		t.Fatalf("result = %+v", r)
+	}
+	if run.Tool.Driver.Rules[r.RuleIndex].ID != r.RuleID {
+		t.Fatalf("ruleIndex %d points at %q", r.RuleIndex, run.Tool.Driver.Rules[r.RuleIndex].ID)
+	}
+	if uri := r.Locations[0].PhysicalLocation.ArtifactLocation.URI; !strings.HasSuffix(uri, "testdata/roles/oidc-wildcard.json") {
+		t.Fatalf("uri = %q", uri)
+	}
+}
+
+func TestSARIFLiveRoleUsesALogicalLocation(t *testing.T) {
+	arn := "arn:aws:iam::111122223333:role/open"
+	res := audit.Result{Findings: []audit.Finding{{Rule: "wildcard-principal", Severity: "error", Role: "open", File: arn}}}
+	out := render(t, res, "sarif")
+	if !strings.Contains(out, `"fullyQualifiedName": "`+arn+`"`) || strings.Contains(out, "physicalLocation") {
+		t.Fatalf("live finding should carry the ARN as a logical location:\n%s", out)
+	}
+}
+
+func TestSARIFCleanRunHasEmptyResults(t *testing.T) {
+	out := render(t, fixture(t, "ec2-app.json"), "sarif")
+	if !strings.Contains(out, `"results": []`) {
+		t.Fatalf("clean sarif should carry an empty results array:\n%s", out)
+	}
+}

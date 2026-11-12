@@ -49,10 +49,20 @@ jobs:
       - name: A clean role exits 0
         run: ./aws-iam-trust-audit --dir examples/iam/roles/ec2-app.json
 
-      - name: Markdown and JSON render
+      - name: Markdown, JSON and SARIF render
         run: |
           ./aws-iam-trust-audit --dir examples/iam/roles --format markdown --fail-on never
           ./aws-iam-trust-audit --dir examples/iam/roles --format json --fail-on never | python3 -m json.tool > /dev/null
+          ./aws-iam-trust-audit --dir examples/iam/roles --format sarif --fail-on never | python3 -m json.tool > /dev/null
+
+      - name: "--from-aws without credentials exits 2"
+        run: |
+          set +e
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP" AWS_EC2_METADATA_DISABLED=true \
+            ./aws-iam-trust-audit --from-aws
+          code=$?
+          set -e
+          test "$code" = "2" || { echo "expected exit 2, got $code"; exit 1; }
 
       - name: A broken policy exits 2
         run: |
@@ -78,3 +88,15 @@ jobs:
         run: |
           test "${{ steps.audit.outputs.exit-code }}" = "1" \
             || { echo "action exit-code = ${{ steps.audit.outputs.exit-code }}, want 1"; exit 1; }
+
+      - name: Run the composite action with SARIF output
+        id: sarif
+        continue-on-error: true
+        uses: ./
+        with:
+          dir: examples/iam/roles
+          format: sarif
+      - name: The report file is SARIF
+        run: |
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["version"]=="2.1.0", d["version"]' \
+            "${{ steps.sarif.outputs.report-file }}"

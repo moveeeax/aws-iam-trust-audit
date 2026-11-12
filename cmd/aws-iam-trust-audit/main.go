@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/moveeeax/aws-iam-trust-audit/internal/audit"
+	"github.com/moveeeax/aws-iam-trust-audit/internal/awslive"
 	"github.com/moveeeax/aws-iam-trust-audit/internal/iampolicy"
 	"github.com/moveeeax/aws-iam-trust-audit/internal/report"
 )
@@ -36,6 +38,15 @@ func (s *stringList) Set(v string) error {
 	return nil
 }
 
+// loadLive reads roles from IAM. Tests replace it so they never reach AWS.
+var loadLive = func(ctx context.Context, profile, rolePath string) ([]iampolicy.Role, error) {
+	client, err := awslive.NewClient(ctx, profile)
+	if err != nil {
+		return nil, err
+	}
+	return awslive.LoadRoles(ctx, client, rolePath)
+}
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -45,7 +56,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	var (
 		dir         = fs.String("dir", ".", "directory (or single file) of trust policy JSON to audit")
-		format      = fs.String("format", "table", "output format: table, json or markdown")
+		format      = fs.String("format", "table", "output format: table, json, markdown or sarif")
+		fromAWS     = fs.Bool("from-aws", false, "read roles live with iam:ListRoles instead of from --dir")
+		profile     = fs.String("profile", "", "shared-config profile for --from-aws; default credential chain when empty")
+		rolePath    = fs.String("role-path", "", "with --from-aws, only roles under this IAM path, e.g. /ci/")
 		trusted     stringList
 		ignore      stringList
 		minSeverity = fs.String("min-severity", "warning", "report findings at this severity and above: warning or error")
@@ -57,7 +71,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.Var(&trusted, "trusted-accounts", "account ids that are expected to appear (repeatable or comma-separated)")
 	fs.Var(&ignore, "ignore", "rule name to suppress (repeatable or comma-separated)")
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "aws-iam-trust-audit — who may actually assume your IAM roles\n\nUsage:\n  aws-iam-trust-audit --dir ./iam/roles [flags]\n\nFlags:\n")
+		fmt.Fprintf(stderr, "aws-iam-trust-audit — who may actually assume your IAM roles\n\nUsage:\n  aws-iam-trust-audit --dir ./iam/roles [flags]\n  aws-iam-trust-audit --from-aws [--profile P] [--role-path /ci/] [flags]\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -74,6 +88,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitClean
 	}
 
+	report.Version = version
+	if err := report.Check(*format); err != nil {
+		fmt.Fprintf(stderr, "aws-iam-trust-audit: --format: %v\n", err)
+		return exitError
+	}
 	minSev, err := audit.ParseSeverity(*minSeverity)
 	if err != nil {
 		fmt.Fprintf(stderr, "aws-iam-trust-audit: --min-severity: %v\n", err)
@@ -100,7 +119,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 		ignoreSet[name] = true
 	}
 
-	roles, err := iampolicy.LoadDir(*dir)
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if *fromAWS && set["dir"] {
+		fmt.Fprintln(stderr, "aws-iam-trust-audit: --dir and --from-aws are mutually exclusive")
+		return exitError
+	}
+	if !*fromAWS && (set["profile"] || set["role-path"]) {
+		fmt.Fprintln(stderr, "aws-iam-trust-audit: --profile and --role-path need --from-aws")
+		return exitError
+	}
+	if err := awslive.ValidatePath(*rolePath); err != nil {
+		fmt.Fprintf(stderr, "aws-iam-trust-audit: --role-path: %v\n", err)
+		return exitError
+	}
+
+	var roles []iampolicy.Role
+	if *fromAWS {
+		roles, err = loadLive(context.Background(), *profile, *rolePath)
+	} else {
+		roles, err = iampolicy.LoadDir(*dir)
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "aws-iam-trust-audit: %v\n", err)
 		return exitError

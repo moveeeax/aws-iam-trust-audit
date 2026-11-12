@@ -1,5 +1,5 @@
 name: aws-iam-trust-audit
-description: Audit IAM role trust policies for wildcard principals, cross-account AssumeRole without ExternalId and over-broad GitHub OIDC subjects.
+description: Audit IAM role trust policies for wildcard principals, cross-account AssumeRole without ExternalId and over-broad OIDC subjects.
 branding:
   icon: shield
   color: orange
@@ -9,8 +9,16 @@ inputs:
     description: Directory (or file) of trust policy JSON to audit.
     required: false
     default: ./iam/roles
+  from-aws:
+    description: Read roles live with iam:ListRoles instead of from dir. Needs AWS credentials in the environment, e.g. from aws-actions/configure-aws-credentials.
+    required: false
+    default: "false"
+  role-path:
+    description: With from-aws, only audit roles under this IAM path, e.g. /ci/.
+    required: false
+    default: ""
   format:
-    description: Output format — table, json or markdown.
+    description: Output format — table, json, markdown or sarif.
     required: false
     default: table
   trusted-accounts:
@@ -40,11 +48,14 @@ inputs:
 
 outputs:
   exit-code:
-    description: 0 clean, 1 findings at or above fail-on, 2 a parse error.
+    description: 0 clean, 1 findings at or above fail-on, 2 a parse, usage or AWS API error.
     value: ${{ steps.audit.outputs.exit-code }}
   report:
     description: The rendered report.
     value: ${{ steps.audit.outputs.report }}
+  report-file:
+    description: Path of the rendered report, e.g. for github/codeql-action/upload-sarif when format is sarif.
+    value: ${{ steps.audit.outputs.report-file }}
 
 runs:
   using: composite
@@ -63,24 +74,35 @@ runs:
       id: audit
       shell: bash
       run: |
-        args=(--dir "${{ inputs.dir }}" --format "${{ inputs.format }}"
+        args=(--format "${{ inputs.format }}"
               --min-severity "${{ inputs.min-severity }}" --fail-on "${{ inputs.fail-on }}")
+        if [[ "${{ inputs.from-aws }}" == "true" ]]; then
+          args+=(--from-aws)
+          [[ -n "${{ inputs.role-path }}" ]] && args+=(--role-path "${{ inputs.role-path }}")
+          from="IAM (iam:ListRoles)"
+        else
+          args+=(--dir "${{ inputs.dir }}")
+          from="${{ inputs.dir }}"
+        fi
         [[ -n "${{ inputs.trusted-accounts }}" ]] && args+=(--trusted-accounts "${{ inputs.trusted-accounts }}")
         [[ -n "${{ inputs.ignore }}" ]] && args+=(--ignore "${{ inputs.ignore }}")
         [[ -n "${{ inputs.account }}" ]] && args+=(--account "${{ inputs.account }}")
+
+        out="$RUNNER_TEMP/trust-audit.${{ inputs.format }}"
 
         # Findings exit non-zero on purpose. GitHub runs composite `run:` steps
         # under `bash -e`, so the exit code has to be caught before it aborts
         # the step and the report is lost.
         set +e
-        "$RUNNER_TEMP/aws-iam-trust-audit" "${args[@]}" | tee "$RUNNER_TEMP/trust-audit.out"
+        "$RUNNER_TEMP/aws-iam-trust-audit" "${args[@]}" | tee "$out"
         code=${PIPESTATUS[0]}
         set -e
 
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "report-file=$out" >> "$GITHUB_OUTPUT"
         {
           echo "report<<AUDIT_EOF"
-          cat "$RUNNER_TEMP/trust-audit.out"
+          cat "$out"
           echo "AUDIT_EOF"
         } >> "$GITHUB_OUTPUT"
 
@@ -88,12 +110,12 @@ runs:
           echo "### aws-iam-trust-audit"
           echo
           echo '```'
-          cat "$RUNNER_TEMP/trust-audit.out"
+          cat "$out"
           echo '```'
         } >> "$GITHUB_STEP_SUMMARY"
 
         if [[ "$code" == "2" ]]; then
-          echo "::error::aws-iam-trust-audit could not parse the trust policies in ${{ inputs.dir }}"
+          echo "::error::aws-iam-trust-audit could not read the trust policies from $from"
           exit 2
         fi
         if [[ "$code" != "0" ]]; then

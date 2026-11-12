@@ -56,7 +56,7 @@ var Rules = []struct {
 }{
 	{RuleWildcardPrincipal, Error, "principal is \"*\", or the action is sts:* / *"},
 	{RuleCrossAccountNoEID, Error, "external account principal with no sts:ExternalId condition"},
-	{RuleOIDCWildcardSub, Error, "web-identity principal whose sub claim is unset or wildcarded"},
+	{RuleOIDCWildcardSub, Error, "web-identity principal whose sub claim is unset, only negated, or wildcarded"},
 	{RuleUntrustedAccount, Warning, "account id outside --trusted-accounts"},
 	{RuleRootPrincipal, Warning, "bare arn:aws:iam::<id>:root principal"},
 	{RuleNoMFACondition, Warning, "IAM user principal without aws:MultiFactorAuthPresent"},
@@ -257,38 +257,6 @@ func statementFindings(r iampolicy.Role, idx int, st iampolicy.Statement, whos [
 		}
 	}
 	return out
-}
-
-func oidcFindings(r iampolicy.Role, idx int, st iampolicy.Statement, w Who) []Finding {
-	subs := st.Condition.Lookup(":sub")
-	if len(subs) == 0 {
-		return []Finding{finding(RuleOIDCWildcardSub, Error, r, idx, w.Value,
-			"web-identity principal with no :sub condition: any token from this provider may assume the role")}
-	}
-	var out []Finding
-	for _, c := range subs {
-		for _, v := range c.Values {
-			if !strings.Contains(v, "*") {
-				continue
-			}
-			out = append(out, finding(RuleOIDCWildcardSub, Error, r, idx, w.Value,
-				fmt.Sprintf("%s %s=%q %s", c.Operator, c.Key, v, subScope(v))))
-		}
-	}
-	return out
-}
-
-// subScope describes what the wildcard actually opens up, which is the part a
-// reviewer gets wrong: a wildcard in the repository segment is a different
-// problem from one in the ref segment.
-func subScope(sub string) string {
-	body := strings.TrimPrefix(sub, "repo:")
-	seg := strings.SplitN(body, ":", 2)
-	repoPart := seg[0]
-	if strings.Contains(repoPart, "*") {
-		return "matches every repository covered by the pattern"
-	}
-	return "matches every branch, tag, environment and pull request of " + repoPart
 }
 
 func effect(st iampolicy.Statement) string {

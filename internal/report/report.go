@@ -1,5 +1,5 @@
-// Package report renders an audit result as a table, as JSON, or as Markdown
-// fit for a pull-request comment.
+// Package report renders an audit result as a table, as JSON, as Markdown fit
+// for a pull-request comment, or as SARIF for code-scanning upload.
 package report
 
 import (
@@ -11,17 +11,33 @@ import (
 	"github.com/moveeeax/aws-iam-trust-audit/internal/audit"
 )
 
+// Version is the tool version written into SARIF output.
+var Version = "dev"
+
+// Check reports whether format is one Write understands, so a caller can
+// reject it before doing any work.
+func Check(format string) error {
+	switch strings.ToLower(format) {
+	case "table", "", "json", "markdown", "md", "sarif":
+		return nil
+	}
+	return fmt.Errorf("unknown format %q (want table, json, markdown or sarif)", format)
+}
+
 // Write renders res in the named format.
 func Write(w io.Writer, res audit.Result, format string) error {
+	if err := Check(format); err != nil {
+		return err
+	}
 	switch strings.ToLower(format) {
-	case "table", "":
-		return writeTable(w, res)
 	case "json":
 		return writeJSON(w, res)
 	case "markdown", "md":
 		return writeMarkdown(w, res)
+	case "sarif":
+		return writeSARIF(w, res)
 	}
-	return fmt.Errorf("unknown format %q (want table, json or markdown)", format)
+	return writeTable(w, res)
 }
 
 func writeTable(w io.Writer, res audit.Result) error {
