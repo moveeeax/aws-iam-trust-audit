@@ -107,13 +107,11 @@ func TestOIDCWildcardInRefSegment(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Loosen the pinned role to every branch and the rule must fire, naming
-	// the repository that stays fixed.
-	for op, kv := range roles[0].Trust.Statement[0].Condition {
-		for k := range kv {
-			if strings.HasSuffix(k, ":sub") {
-				roles[0].Trust.Statement[0].Condition[op][k] = iampolicy.StringOrSlice{"repo:moveeeax/app:*"}
-			}
-		}
+	// the repository that stays fixed. IAM only expands * under StringLike.
+	cond := roles[0].Trust.Statement[0].Condition
+	delete(cond["StringEquals"], "token.actions.githubusercontent.com:sub")
+	cond["StringLike"] = map[string]iampolicy.StringOrSlice{
+		"token.actions.githubusercontent.com:sub": {"repo:moveeeax/app:*"},
 	}
 	res := Run(roles, Options{})
 	wantRules(t, res, RuleOIDCWildcardSub)

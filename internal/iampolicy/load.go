@@ -198,3 +198,21 @@ func AccountFromArn(arn string) string {
 func nameFromPath(path string) string {
 	return strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 }
+
+// RoleFromAPI builds a role from the fields of an iam:ListRoles or
+// iam:GetRole response. doc is the AssumeRolePolicyDocument exactly as the API
+// returns it, URL-encoded. File is set to the ARN: a role read live has no
+// file, and the ARN is what a reader needs to find it.
+func RoleFromAPI(name, arn, doc string) (Role, error) {
+	r := Role{Name: name, Arn: arn, AccountID: AccountFromArn(arn), File: arn}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return Role{}, err
+	}
+	d, err := parseEmbeddedDocument(raw)
+	if err != nil {
+		return Role{}, fmt.Errorf("role %q: %w", name, err)
+	}
+	r.Trust = d
+	return r, nil
+}
